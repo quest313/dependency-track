@@ -7,3 +7,8 @@ docs/.jekyll-metadata
 target/
 .classpath
 .project
+
+#intellij
+.idea
+*.iml
+

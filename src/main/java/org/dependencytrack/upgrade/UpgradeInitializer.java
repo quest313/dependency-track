@@ -20,23 +20,16 @@ package org.dependencytrack.upgrade;
 
 import alpine.Config;
 import alpine.logging.Logger;
-import alpine.model.InstalledUpgrades;
-import alpine.model.SchemaVersion;
 import alpine.persistence.JdoProperties;
-import alpine.upgrade.UpgradeException;
 import alpine.upgrade.UpgradeExecutor;
-import org.datanucleus.PersistenceNucleusContext;
 import org.datanucleus.api.jdo.JDOPersistenceManagerFactory;
-import org.datanucleus.store.schema.SchemaAwareStoreManager;
-import org.dependencytrack.RequirementsVerifier;
 import org.dependencytrack.persistence.QueryManager;
+import org.flywaydb.core.Flyway;
+
 import javax.jdo.JDOHelper;
 import javax.jdo.PersistenceManager;
 import javax.servlet.ServletContextEvent;
 import javax.servlet.ServletContextListener;
-import java.util.HashSet;
-import java.util.Properties;
-import java.util.Set;
 
 public class UpgradeInitializer implements ServletContextListener {
 
@@ -53,29 +46,47 @@ public class UpgradeInitializer implements ServletContextListener {
         if (driverPath != null) {
             Config.getInstance().expandClasspath(driverPath);
         }
-        final JDOPersistenceManagerFactory pmf  = (JDOPersistenceManagerFactory) JDOHelper.getPersistenceManagerFactory(JdoProperties.get(), "Alpine");
 
-        // Ensure that the UpgradeMetaProcessor and SchemaVersion tables are created NOW, not dynamically at runtime.
-        final PersistenceNucleusContext ctx = pmf.getNucleusContext();
-        final Set<String> classNames = new HashSet<>();
-        classNames.add(InstalledUpgrades.class.getCanonicalName());
-        classNames.add(SchemaVersion.class.getCanonicalName());
-        ((SchemaAwareStoreManager)ctx.getStoreManager()).createSchemaForClasses(classNames, new Properties());
-
-        if (RequirementsVerifier.failedValidation()) {
-            return;
+        final String dbUrl = Config.getInstance().getProperty(Config.AlpineKey.DATABASE_URL);
+        final String user = Config.getInstance().getProperty(Config.AlpineKey.DATABASE_USERNAME);
+        final String password = Config.getInstance().getProperty(Config.AlpineKey.DATABASE_PASSWORD);
+        if (dbUrl != null) {
+            Config.getInstance().expandClasspath(dbUrl);
         }
+
+        // Baseline Flyway from Alpine version
+        baseline(dbUrl, user, password);
+
+        Flyway flyway = Flyway.configure().locations("db/migration/postgres")
+                .dataSource(dbUrl, user, password).load();
+
+        flyway.migrate();
+    }
+
+    private void baseline(String dbUrl, String user, String password) {
+        final JDOPersistenceManagerFactory pmf = (JDOPersistenceManagerFactory) JDOHelper.getPersistenceManagerFactory(JdoProperties.get(), "Alpine");
         try (final PersistenceManager pm = pmf.getPersistenceManager();
              final QueryManager qm = new QueryManager(pm)) {
             final UpgradeExecutor executor = new UpgradeExecutor(qm);
-            try {
-                executor.executeUpgrades(UpgradeItems.getUpgradeItems());
-            } catch (UpgradeException e) {
-                LOGGER.error("An error occurred performing upgrade processing. " + e.getMessage());
+            String schemaVersion = executor.getSchemaVersion();
+
+            if (schemaVersion == null) {
+                // no baseline needed
+                return;
             }
+
+            LOGGER.info("Detected Alpine version: " + schemaVersion);
+            LOGGER.info("Baseline flyway to version: " + schemaVersion);
+            Flyway flyway = Flyway.configure().locations("db/migration/postgres")
+                    .baselineVersion(schemaVersion)
+                    .dataSource(dbUrl, user, password).load();
+
+            flyway.baseline();
         }
+
         pmf.close();
     }
+
 
     /**
      * {@inheritDoc}

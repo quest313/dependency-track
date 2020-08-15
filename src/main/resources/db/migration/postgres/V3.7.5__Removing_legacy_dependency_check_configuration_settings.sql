@@ -1,0 +1,1 @@
+DELETE FROM "CONFIGPROPERTY" WHERE "GROUPNAME" = 'artifact' AND "PROPERTYNAME" = 'dependencycheck.enabled';

@@ -1,0 +1,1 @@
+UPDATE "REPOSITORY" SET "URL" = 'https://api.nuget.org/' WHERE "IDENTIFIER" = 'nuget-gallery';

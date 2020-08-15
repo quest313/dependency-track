@@ -126,6 +126,11 @@
             <artifactId>cvss-calculator</artifactId>
             <version>${lib.cvss-calculator.version}</version>
         </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+            <version>6.5.2</version>
+        </dependency>
         <!-- CPE Parser -->
         <dependency>
             <groupId>us.springett</groupId>
